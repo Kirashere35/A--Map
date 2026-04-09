@@ -67,7 +67,7 @@
         .country.completed {
             fill: var(--map-success);
             stroke: #064e3b;
-            pointer-events: none; /* Make unclickable */
+            pointer-events: none;
         }
 
         .label-country {
@@ -138,19 +138,71 @@
             30%, 50%, 70% { transform: translateX(-50%) translate3d(-10px, 0, 0); }
             40%, 60% { transform: translateX(-50%) translate3d(10px, 0, 0); }
         }
+
+        /* -------------------------------------------
+           ✨ KIRA RGB GLOW SIGNATURE ✨
+           ------------------------------------------- */
+        .kira-signature {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 170px;
+            height: 45px;
+            background: var(--bg-color);
+            z-index: 1000;
+            border-radius: 12px; /* Köşeleri yuvarlatılmış dikdörtgen */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            user-select: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* RGB Border & Glow Effect */
+        .kira-signature::before,
+        .kira-signature::after {
+            content: '';
+            position: absolute;
+            top: -3px; /* Border kalınlığı */
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000);
+            background-size: 400%;
+            border-radius: 14px; /* Dış köşeler */
+            z-index: -1;
+            animation: rgb-glow 20s linear infinite;
+        }
+
+        /* Sadece ::after olanı bulanıklaştırarak etrafa ışık saçmasını sağlıyoruz */
+        .kira-signature::after {
+            filter: blur(15px);
+            opacity: 0.8;
+        }
+
+        @keyframes rgb-glow {
+            0% { background-position: 0 0; }
+            50% { background-position: 400% 0; }
+            100% { background-position: 0 0; }
+        }
     </style>
 </head>
 <body>
 
     <div id="game-container">
-        </div>
+    </div>
 
     <div id="input-modal">
         <input type="text" id="user-input" autocomplete="off" spellcheck="false">
     </div>
 
+    <div class="kira-signature">Developed By Kira</div>
+
     <script>
-        // 1. Data Structure encompassing English, Spanish, and Turkish validation
         const countryData = {
             "Mexico": { names: ["mexico", "méxico", "meksika"], capitals: ["mexico city", "ciudad de méxico", "ciudad de mexico", "meksiko"] },
             "Guatemala": { names: ["guatemala"], capitals: ["guatemala city", "ciudad de guatemala", "guatemala"] },
@@ -174,7 +226,6 @@
             "Uruguay": { names: ["uruguay"], capitals: ["montevideo"] }
         };
 
-        // 2. Map Setup
         const width = 1000;
         const height = 1000;
         
@@ -185,31 +236,23 @@
 
         const g = svg.append("g");
 
-        // Game State Variables
         let activeFeature = null;
         let activePathElement = null;
         let activeData = null;
-        let gameState = "idle"; // 'idle', 'waiting_country', 'waiting_capital'
+        let gameState = "idle";
 
         const inputModal = document.getElementById("input-modal");
         const inputField = document.getElementById("user-input");
 
-        // Fetch high-fidelity TopoJSON from public CDN
         d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(world => {
-            
-            // Convert TopoJSON to GeoJSON
             const countries = topojson.feature(world, world.objects.countries).features;
-            
-            // Filter strictly to the Latin American countries we defined in our object
             const latAmFeatures = countries.filter(d => countryData[d.properties.name]);
 
-            // Fit the projection tightly around our filtered GeoJSON
             const projection = d3.geoMercator()
                 .fitSize([width, height], { type: "FeatureCollection", features: latAmFeatures });
             
             const pathGenerator = d3.geoPath().projection(projection);
 
-            // Render the map paths
             g.selectAll("path")
                 .data(latAmFeatures)
                 .enter()
@@ -219,31 +262,25 @@
                 .on("click", handleCountryClick);
         });
 
-        // 3. Interaction Logic
         function handleCountryClick(event, d) {
             const currentElement = d3.select(this);
             
-            // Ignore if already answered correctly
             if (currentElement.classed("completed")) return;
 
-            // Reset previous highlights
             d3.selectAll(".country").classed("selected", false);
             currentElement.classed("selected", true);
 
-            // Update Game State
             activeFeature = d;
             activePathElement = this;
             activeData = countryData[d.properties.name];
             gameState = "waiting_country";
 
-            // Trigger sleek UI
             inputModal.style.display = "block";
             inputField.value = "";
             inputField.placeholder = "Country Name?";
             inputField.focus();
         }
 
-        // 4. Validation Flow
         inputField.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 const answer = e.target.value.trim().toLowerCase();
@@ -267,7 +304,7 @@
 
         function triggerError() {
             inputModal.classList.add("shake", "error-state");
-            inputField.value = ""; // Clear typed text
+            inputField.value = ""; 
             
             setTimeout(() => {
                 inputModal.classList.remove("shake", "error-state");
@@ -290,22 +327,16 @@
         function triggerSuccessPhase2() {
             inputModal.classList.add("success-state");
             
-            // Lock in the completed country
             d3.select(activePathElement)
                 .classed("selected", false)
                 .classed("completed", true);
 
-            // Calculate Centroid and Append Text
             const centroid = d3.geoPath().projection(d3.geoMercator().fitSize([width, height], { type: "FeatureCollection", features: d3.selectAll(".country").data() })).centroid(activeFeature);
             
-            // Note: Chile's long geometry throws off standard centroids slightly; 
-            // D3 handles most fine but we append exactly to the mathematical center of the SVG path.
             const textGroup = g.append("g")
                 .attr("transform", `translate(${centroid[0]}, ${centroid[1]})`);
 
-            // Primary Country Display Name (Always defaults to standard capitalization from dict)
             const displayCountry = activeFeature.properties.name;
-            // Primary Capital Display Name
             const displayCapital = activeData.capitals[0].replace(/\b\w/g, l => l.toUpperCase());
 
             textGroup.append("text")
