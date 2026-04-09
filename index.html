@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Latin America Geography Game</title>
+    
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+
+    <style>
+        :root {
+            --bg-color: #1a1a24;
+            --map-stroke: #4a4a5a;
+            --map-hover: rgba(255, 255, 255, 0.1);
+            --map-success: #10b981;
+            --text-color: #f3f4f6;
+            --error-color: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        svg {
+            width: 90%;
+            height: 90%;
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.5));
+        }
+
+        .country {
+            fill: transparent;
+            stroke: var(--map-stroke);
+            stroke-width: 1px;
+            transition: fill 0.3s ease, stroke 0.3s ease, stroke-width 0.3s ease;
+            cursor: pointer;
+        }
+
+        .country:hover, .country.selected {
+            fill: var(--map-hover);
+            stroke: #ffffff;
+            stroke-width: 2px;
+        }
+
+        .country.completed {
+            fill: var(--map-success);
+            stroke: #064e3b;
+            pointer-events: none; /* Make unclickable */
+        }
+
+        .label-country {
+            font-size: 14px;
+            fill: #ffffff;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 0px 2px 4px rgba(0,0,0,0.9);
+        }
+
+        .label-capital {
+            font-size: 11px;
+            fill: #d1d5db;
+            pointer-events: none;
+            text-shadow: 0px 2px 4px rgba(0,0,0,0.9);
+        }
+
+        /* Floating Input Modal */
+        #input-modal {
+            position: fixed;
+            bottom: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 30, 46, 0.85);
+            backdrop-filter: blur(12px);
+            padding: 15px 40px;
+            border-radius: 50px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            display: none;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        #user-input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 24px;
+            text-align: center;
+            outline: none;
+            font-family: inherit;
+            width: 300px;
+        }
+
+        #user-input::placeholder {
+            color: #6b7280;
+        }
+
+        /* Animations */
+        .shake {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        .error-state {
+            border-color: var(--error-color) !important;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4) !important;
+        }
+
+        .success-state {
+            border-color: var(--map-success) !important;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.4) !important;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translateX(-50%) translate3d(-5px, 0, 0); }
+            20%, 80% { transform: translateX(-50%) translate3d(5px, 0, 0); }
+            30%, 50%, 70% { transform: translateX(-50%) translate3d(-10px, 0, 0); }
+            40%, 60% { transform: translateX(-50%) translate3d(10px, 0, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        </div>
+
+    <div id="input-modal">
+        <input type="text" id="user-input" autocomplete="off" spellcheck="false">
+    </div>
+
+    <script>
+        // 1. Data Structure encompassing English, Spanish, and Turkish validation
+        const countryData = {
+            "Mexico": { names: ["mexico", "méxico", "meksika"], capitals: ["mexico city", "ciudad de méxico", "ciudad de mexico", "meksiko"] },
+            "Guatemala": { names: ["guatemala"], capitals: ["guatemala city", "ciudad de guatemala", "guatemala"] },
+            "Belize": { names: ["belize", "beliz"], capitals: ["belmopan"] },
+            "El Salvador": { names: ["el salvador"], capitals: ["san salvador"] },
+            "Honduras": { names: ["honduras"], capitals: ["tegucigalpa"] },
+            "Nicaragua": { names: ["nicaragua", "nikaragua"], capitals: ["managua"] },
+            "Costa Rica": { names: ["costa rica", "kosta rika"], capitals: ["san jose", "san josé"] },
+            "Panama": { names: ["panama", "panamá"], capitals: ["panama city", "ciudad de panamá", "ciudad de panama", "panama"] },
+            "Colombia": { names: ["colombia", "kolombiya"], capitals: ["bogota", "bogotá"] },
+            "Venezuela": { names: ["venezuela"], capitals: ["caracas", "karakas"] },
+            "Guyana": { names: ["guyana"], capitals: ["georgetown"] },
+            "Suriname": { names: ["suriname", "surinam"], capitals: ["paramaribo"] },
+            "Ecuador": { names: ["ecuador", "ekvador"], capitals: ["quito", "kito"] },
+            "Peru": { names: ["peru", "perú"], capitals: ["lima"] },
+            "Brazil": { names: ["brazil", "brasil", "brezilya"], capitals: ["brasilia", "brasília"] },
+            "Bolivia": { names: ["bolivia", "bolivya"], capitals: ["sucre", "la paz"] }, 
+            "Paraguay": { names: ["paraguay"], capitals: ["asuncion", "asunción"] },
+            "Chile": { names: ["chile", "şili"], capitals: ["santiago"] },
+            "Argentina": { names: ["argentina", "arjantin"], capitals: ["buenos aires"] },
+            "Uruguay": { names: ["uruguay"], capitals: ["montevideo"] }
+        };
+
+        // 2. Map Setup
+        const width = 1000;
+        const height = 1000;
+        
+        const svg = d3.select("#game-container")
+            .append("svg")
+            .attr("viewBox", `0 0 ${width} ${height}`)
+            .attr("preserveAspectRatio", "xMidYMid meet");
+
+        const g = svg.append("g");
+
+        // Game State Variables
+        let activeFeature = null;
+        let activePathElement = null;
+        let activeData = null;
+        let gameState = "idle"; // 'idle', 'waiting_country', 'waiting_capital'
+
+        const inputModal = document.getElementById("input-modal");
+        const inputField = document.getElementById("user-input");
+
+        // Fetch high-fidelity TopoJSON from public CDN
+        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(world => {
+            
+            // Convert TopoJSON to GeoJSON
+            const countries = topojson.feature(world, world.objects.countries).features;
+            
+            // Filter strictly to the Latin American countries we defined in our object
+            const latAmFeatures = countries.filter(d => countryData[d.properties.name]);
+
+            // Fit the projection tightly around our filtered GeoJSON
+            const projection = d3.geoMercator()
+                .fitSize([width, height], { type: "FeatureCollection", features: latAmFeatures });
+            
+            const pathGenerator = d3.geoPath().projection(projection);
+
+            // Render the map paths
+            g.selectAll("path")
+                .data(latAmFeatures)
+                .enter()
+                .append("path")
+                .attr("d", pathGenerator)
+                .attr("class", "country")
+                .on("click", handleCountryClick);
+        });
+
+        // 3. Interaction Logic
+        function handleCountryClick(event, d) {
+            const currentElement = d3.select(this);
+            
+            // Ignore if already answered correctly
+            if (currentElement.classed("completed")) return;
+
+            // Reset previous highlights
+            d3.selectAll(".country").classed("selected", false);
+            currentElement.classed("selected", true);
+
+            // Update Game State
+            activeFeature = d;
+            activePathElement = this;
+            activeData = countryData[d.properties.name];
+            gameState = "waiting_country";
+
+            // Trigger sleek UI
+            inputModal.style.display = "block";
+            inputField.value = "";
+            inputField.placeholder = "Country Name?";
+            inputField.focus();
+        }
+
+        // 4. Validation Flow
+        inputField.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                const answer = e.target.value.trim().toLowerCase();
+
+                if (gameState === "waiting_country") {
+                    if (activeData.names.includes(answer)) {
+                        triggerSuccessPhase1();
+                    } else {
+                        triggerError();
+                    }
+                } 
+                else if (gameState === "waiting_capital") {
+                    if (activeData.capitals.includes(answer)) {
+                        triggerSuccessPhase2();
+                    } else {
+                        triggerError();
+                    }
+                }
+            }
+        });
+
+        function triggerError() {
+            inputModal.classList.add("shake", "error-state");
+            inputField.value = ""; // Clear typed text
+            
+            setTimeout(() => {
+                inputModal.classList.remove("shake", "error-state");
+                inputField.focus();
+            }, 400);
+        }
+
+        function triggerSuccessPhase1() {
+            inputModal.classList.add("success-state");
+            inputField.value = "";
+            inputField.placeholder = "Capital?";
+            gameState = "waiting_capital";
+
+            setTimeout(() => {
+                inputModal.classList.remove("success-state");
+                inputField.focus();
+            }, 300);
+        }
+
+        function triggerSuccessPhase2() {
+            inputModal.classList.add("success-state");
+            
+            // Lock in the completed country
+            d3.select(activePathElement)
+                .classed("selected", false)
+                .classed("completed", true);
+
+            // Calculate Centroid and Append Text
+            const centroid = d3.geoPath().projection(d3.geoMercator().fitSize([width, height], { type: "FeatureCollection", features: d3.selectAll(".country").data() })).centroid(activeFeature);
+            
+            // Note: Chile's long geometry throws off standard centroids slightly; 
+            // D3 handles most fine but we append exactly to the mathematical center of the SVG path.
+            const textGroup = g.append("g")
+                .attr("transform", `translate(${centroid[0]}, ${centroid[1]})`);
+
+            // Primary Country Display Name (Always defaults to standard capitalization from dict)
+            const displayCountry = activeFeature.properties.name;
+            // Primary Capital Display Name
+            const displayCapital = activeData.capitals[0].replace(/\b\w/g, l => l.toUpperCase());
+
+            textGroup.append("text")
+                .text(displayCountry)
+                .attr("class", "label-country")
+                .attr("text-anchor", "middle")
+                .attr("dy", "-0.2em");
+
+            textGroup.append("text")
+                .text(displayCapital)
+                .attr("class", "label-capital")
+                .attr("text-anchor", "middle")
+                .attr("dy", "1.2em");
+
+            setTimeout(() => {
+                inputModal.classList.remove("success-state");
+                inputModal.style.display = "none";
+                gameState = "idle";
+            }, 400);
+        }
+    </script>
+</body>
+</html>
